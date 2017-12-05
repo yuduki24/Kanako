@@ -24,9 +24,9 @@ def load_image(dir, file, colorkey=None):
     file = os.path.join(dir, file)
     try:
         image = pygame.image.load(file)
-    except pygame.error, message:
-        print "Cannot load image:", file
-        raise SystemExit, message
+    except pygame.error as message:
+        print("Cannot load image:", file)
+        raise SystemExit(message)
     image = image.convert()
     if colorkey is not None:
         if colorkey is -1:
@@ -51,7 +51,7 @@ class PyRPG:
     def __init__(self):
         pygame.init()
         # フルスクリーン化 + Hardware Surface使用
-        self.screen = pygame.display.set_mode(SCR_RECT.size, DOUBLEBUF|HWSURFACE|FULLSCREEN)
+        self.screen = pygame.display.set_mode(SCR_RECT.size, DOUBLEBUF|HWSURFACE)
         pygame.display.set_caption(u"PyRPG 27 戦闘画面")
         # サウンドをロード
         self.load_sounds("data", "sound.dat")
@@ -395,10 +395,10 @@ class Map:
         """マップを描画する"""
         offsetx, offsety = offset
         # マップの描画範囲を計算
-        startx = offsetx / GS
-        endx = startx + SCR_RECT.width/GS + 1
-        starty = offsety / GS
-        endy = starty + SCR_RECT.height/GS + 1
+        startx = int(offsetx / GS)
+        endx = int(startx + SCR_RECT.width/GS + 1)
+        starty = int(offsety / GS)
+        endy = int(starty + SCR_RECT.height/GS + 1)
         # マップの描画
         for y in range(starty, endy):
             for x in range(startx, endx):
@@ -420,7 +420,7 @@ class Map:
         if x < 0 or x > self.col-1 or y < 0 or y > self.row-1:
             return False
         # マップチップは移動可能か？
-        if self.movable_type[self.map[y][x]] == 0:
+        if self.movable_type[self.map[int(y)][int(x)]] == 0:
             return False
         # キャラクターと衝突しないか？
         for chara in self.charas:
@@ -585,7 +585,7 @@ class Character:
                     self.moving = True
         # キャラクターアニメーション（frameに応じて描画イメージを切り替える）
         self.frame += 1
-        self.image = self.images[self.name][self.direction*4+self.frame/self.animcycle%4]
+        self.image = self.images[self.name][int(self.direction*4+self.frame/self.animcycle%4)]
     def draw(self, screen, offset):
         """オフセットを考慮してプレイヤーを描画"""
         offsetx, offsety = offset
@@ -637,7 +637,7 @@ class Player(Character):
                     battle.start()
         # キャラクターアニメーション（frameに応じて描画イメージを切り替える）
         self.frame += 1
-        self.image = self.images[self.name][self.direction*4+self.frame/self.animcycle%4]
+        self.image = self.images[self.name][int(self.direction*4+self.frame/self.animcycle%4)]
     def move_to(self, destx, desty):
         """現在位置から(destx,desty)への移動を開始"""
         dx = destx - self.x
@@ -783,7 +783,7 @@ class MessageEngine:
             rect = self.kana2rect[ch]
             screen.blit(self.image, (x,y), (rect.x+self.color,rect.y,rect.width,rect.height))
         except KeyError:
-            print "描画できない文字があります:%s" % ch
+            print("描画できない文字があります:%s" % ch)
             return
     def draw_string(self, screen, pos, str):
         """文字列を描画"""
@@ -853,17 +853,17 @@ class MessageWindow(Window):
         for i in range(len(message)):
             ch = message[i]
             if ch == "/":  # /は改行文字
-                self.text[p] = "/"
+                self.text[int(p)] = "/"
                 p += self.MAX_CHARS_PER_LINE
                 p = (p/self.MAX_CHARS_PER_LINE)*self.MAX_CHARS_PER_LINE
             elif ch == "%":  # \fは改ページ文字
-                self.text[p] = "%"
+                self.text[int(p)] = "%"
                 p += self.MAX_CHARS_PER_PAGE
                 p = (p/self.MAX_CHARS_PER_PAGE)*self.MAX_CHARS_PER_PAGE
             else:
-                self.text[p] = ch
+                self.text[int(p)] = ch
                 p += 1
-        self.text[p] = "$"  # 終端文字
+        self.text[int(p)] = "$"  # 終端文字
         self.show()
     def update(self):
         """メッセージウィンドウを更新する
@@ -873,13 +873,13 @@ class MessageWindow(Window):
                 self.cur_pos += 1  # 1文字流す
                 # テキスト全体から見た現在位置
                 p = self.cur_page * self.MAX_CHARS_PER_PAGE + self.cur_pos
-                if self.text[p] == "/":  # 改行文字
+                if self.text[int(p)] == "/":  # 改行文字
                     self.cur_pos += self.MAX_CHARS_PER_LINE
                     self.cur_pos = (self.cur_pos/self.MAX_CHARS_PER_LINE) * self.MAX_CHARS_PER_LINE
-                elif self.text[p] == "%":  # 改ページ文字
+                elif self.text[int(p)] == "%":  # 改ページ文字
                     self.cur_pos += self.MAX_CHARS_PER_PAGE
                     self.cur_pos = (self.cur_pos/self.MAX_CHARS_PER_PAGE) * self.MAX_CHARS_PER_PAGE
-                elif self.text[p] == "$":  # 終端文字
+                elif self.text[int(p)] == "$":  # 終端文字
                     self.hide_flag = True
                 # 1ページの文字数に達したら▼を表示
                 if self.cur_pos % self.MAX_CHARS_PER_PAGE == 0:
@@ -891,8 +891,8 @@ class MessageWindow(Window):
         Window.draw(self, screen)
         if self.is_visible == False: return
         # 現在表示しているページのcur_posまでの文字を描画
-        for i in range(self.cur_pos):
-            ch = self.text[self.cur_page*self.MAX_CHARS_PER_PAGE+i]
+        for i in range(int(self.cur_pos)):
+            ch = self.text[int(self.cur_page*self.MAX_CHARS_PER_PAGE+i)]
             if ch == "/" or ch == "%" or ch == "$": continue  # 制御文字は表示しない
             dx = self.text_rect[0] + MessageEngine.FONT_WIDTH * (i % self.MAX_CHARS_PER_LINE)
             dy = self.text_rect[1] + (self.LINE_HEIGHT+MessageEngine.FONT_HEIGHT) * (i / self.MAX_CHARS_PER_LINE)
