@@ -2,28 +2,47 @@ import pygame
 from pygame.locals import *
 import sys
 import os
+import random
 
 SCR_RECT = Rect(0, 0, 640, 480)
 GS = 32
 DOWN,LEFT,RIGHT,UP = 0,1,2,3
+STOP, MOVE = 0, 1  # 移動タイプ
+PROB_MOVE = 0.005  # 移動確率
 
 def main():
     pygame.init()
     screen = pygame.display.set_mode(SCR_RECT.size)
     pygame.display.set_caption(u"RPG")
+    # キャラクターイメージをロード
+    Character.images["player"] = split_image(load_image("player.png"))
+    Character.images["king"] = split_image(load_image("king.png"))
+    Character.images["minister"] = split_image(load_image("minister.png"))
+    Character.images["soldier"] = split_image(load_image("soldier.png"))
     # マップチップをロード
-    Map.images[0] = load_image("grass.png")  # 草地
+    Map.images[0] = load_image("grass.png") # 草地
     Map.images[1] = load_image("water.png")  # 水
-    # マップとプレイヤー作成
+    Map.images[2] = load_image("forest.png") # 森
+    Map.images[3] = load_image("hill.png")   # 丘
+    Map.images[4] = load_image("mountain.png")  # 山
+    # マップとプレイヤーを作成
     map = Map("test1")
-    player = Player("player", (2,2), DOWN)
+    player = Player("player", (1,1), DOWN)
+    # キャラクター作成
+    king = Character("king", (2,1), DOWN, STOP)
+    minister = Character("minister", (3,1), DOWN, MOVE)
+    soldier = Character("soldier", (4,1), DOWN, MOVE)
+    # キャラクターをマップに追加
+    map.add_chara(player)
+    map.add_chara(king)
+    map.add_chara(minister)
+    map.add_chara(soldier)
     clock = pygame.time.Clock()
     while True:
         clock.tick(60)
-        player.update(map)
+        map.update()
         offset = calc_offset(player)
         map.draw(screen, offset)
-        player.draw(screen, offset)
         pygame.display.update()
         for event in pygame.event.get():
             if event.type == QUIT:
@@ -66,14 +85,22 @@ def split_image(image):
     return imageList
 
 class Map:
-    row,col = 15,20  # マップの行数、列数
     images = [None] * 256  # マップチップ（番号->イメージ）
     def __init__(self, name):
         self.name = name
         self.row = -1 # 行数
         self.col = -1 # 列数
         self.map = [] # マップデータ(2次元リスト)
+        self.charas = []  # マップにいるキャラクターリスト
         self.load()
+    def add_chara(self, chara):
+        """キャラクターをマップに追加する"""
+        self.charas.append(chara)
+    def update(self):
+        """マップの更新"""
+        # マップにいるキャラクターの更新
+        for chara in self.charas:
+            chara.update(self)  # mapを渡す
     def load(self):
         """ファイルからマップをロード"""
         file = os.path.join("map", self.name + ".map")
@@ -104,6 +131,9 @@ class Map:
                     screen.blit(self.images[self.default], (x*GS-offsetx,y*GS-offsety))
                 else:
                     screen.blit(self.images[self.map[y][x]], (x*GS-offsetx,y*GS-offsety))
+        # このマップにいるキャラクターを描画
+        for chara in self.charas:
+            chara.draw(screen, offset)
     def is_movable(self, x, y):
         """(x,y)は移動可能か？"""
         # マップ範囲内か？
@@ -112,22 +142,73 @@ class Map:
         # マップチップは移動可能か？
         if self.map[y][x] == 1:  # 水は移動できない
             return False
+       # キャラクターと衝突しないか？
+        for chara in self.charas:
+            if chara.x == x and chara.y == y:
+                return False
         return True
 
-class Player:
-    # グローバル変数
-    frame = 0
+class Character:
+    """一般キャラクタークラス"""
     speed = 4  # 1フレームの移動ピクセル数
     animcycle = 24  # アニメーション速度
-    def __init__(self, name, pos, dir):
+    frame = 0
+    # キャラクターイメージ（mainで初期化）
+    # キャラクター名 -> 分割画像リストの辞書
+    images = {}
+    def __init__(self, name, pos, dir, movetype):
         self.name = name  # プレイヤー名（ファイル名と同じ）
-        self.images = split_image(load_image("%s.png" % name))
-        self.image = self.images[0]  # 描画中のイメージ
+        self.image = self.images[name][0]  # 描画中のイメージ
         self.x, self.y = pos[0], pos[1]  # 座標（単位：マス）
         self.rect = self.image.get_rect(topleft=(self.x*GS, self.y*GS))
-        self.direction = dir
         self.vx, self.vy = 0, 0  # 移動速度
         self.moving = False  # 移動中か？
+        self.direction = dir  # 向き
+        self.movetype = movetype  # 移動タイプ
+    def update(self, map):
+        """キャラクター状態を更新する。
+        mapは移動可能かの判定に必要。"""
+        # プレイヤーの移動処理
+        if self.moving == True:
+            # ピクセル移動中ならマスにきっちり収まるまで移動を続ける
+            self.rect.move_ip(self.vx, self.vy)
+            # マスにおさまったら移動完了
+            if self.rect.left % GS == 0 and self.rect.top % GS == 0:
+                self.moving = False
+                self.x = self.rect.left // GS
+                self.y = self.rect.top // GS
+        elif self.movetype == MOVE and random.random() < PROB_MOVE:
+            # 移動中でないならPROB_MOVEの確率でランダム移動開始
+            self.direction = random.randint(0, 3)  # 0-3のいずれか
+            if self.direction == DOWN:
+                if map.is_movable(self.x, self.y+1):
+                    self.vx, self.vy = 0, self.speed
+                    self.moving = True
+            elif self.direction == LEFT:
+                if map.is_movable(self.x-1, self.y):
+                    self.vx, self.vy = -self.speed, 0
+                    self.moving = True
+            elif self.direction == RIGHT:
+                if map.is_movable(self.x+1, self.y):
+                    self.vx, self.vy = self.speed, 0
+                    self.moving = True
+            elif self.direction == UP:
+                if map.is_movable(self.x, self.y-1):
+                    self.vx, self.vy = 0, -self.speed
+                    self.moving = True
+        # キャラクターアニメーション
+        self.frame += 1
+        self.image = self.images[self.name][self.direction*4+self.frame//self.animcycle%4]
+    def draw(self, screen, offset):
+        """オフセットを考慮してプレイヤーを描画"""
+        offsetx, offsety = offset
+        px = self.rect.topleft[0]
+        py = self.rect.topleft[1]
+        screen.blit(self.image, (px-offsetx, py-offsety))
+
+class Player(Character):
+    def __init__(self, name, pos, dir):
+        Character.__init__(self, name, pos, dir, False)
     def update(self, map):
         """プレイヤー状態を更新する。
         mapは移動可能かの判定に必要。"""
@@ -135,17 +216,16 @@ class Player:
         if self.moving == True:
             # ピクセル移動中ならマスにきっちり収まるまで移動を続ける
             self.rect.move_ip(self.vx, self.vy)
-            if self.rect.left % GS == 0 and self.rect.top % GS == 0:
-                # マスにおさまったら移動完了
+            if self.rect.left % GS == 0 and self.rect.top % GS == 0:  # マスにおさまったら移動完了
                 self.moving = False
                 self.x = self.rect.left // GS
                 self.y = self.rect.top // GS
+                # TODO: ここに接触イベントのチェックを入れる
         else:
-            # キー入力があったら移動を開始する（速度をセットする）
+            # プレイヤーの場合、キー入力があったら移動を開始する
             pressed_keys = pygame.key.get_pressed()
             if pressed_keys[K_DOWN]:
-                # 移動できるかに関係なく向きは変える
-                self.direction = DOWN
+                self.direction = DOWN  # 移動できるかに関係なく向きは変える
                 if map.is_movable(self.x, self.y+1):
                     self.vx, self.vy = 0, self.speed
                     self.moving = True
@@ -164,38 +244,9 @@ class Player:
                 if map.is_movable(self.x, self.y-1):
                     self.vx, self.vy = 0, -self.speed
                     self.moving = True
-        # キャラクターアニメーション
-        # frameに応じて描画イメージを切り替える
+        # キャラクターアニメーション（frameに応じて描画イメージを切り替える）
         self.frame += 1
-        self.image = self.images[self.direction*4+self.frame//self.animcycle%4]
-    def move(self, dir, map):
-        """プレイヤーを移動"""
-        if dir == DOWN:
-            self.direction = DOWN
-            if map.is_movable(self.x, self.y+1):
-                self.y += 1
-                self.rect.top += GS
-        elif dir == LEFT:
-            self.direction = LEFT
-            if map.is_movable(self.x-1, self.y):
-                self.x -= 1
-                self.rect.left -= GS
-        elif dir == RIGHT:
-            self.direction = RIGHT
-            if map.is_movable(self.x+1, self.y):
-                self.x += 1
-                self.rect.left += GS
-        elif dir == UP:
-            self.direction = UP
-            if map.is_movable(self.x, self.y-1):
-                self.y -= 1
-                self.rect.top -= GS
-    def draw(self, screen, offset):
-        """オフセットを考慮してプレイヤーを描画"""
-        offsetx, offsety = offset
-        px = self.rect.topleft[0]
-        py = self.rect.topleft[1]
-        screen.blit(self.image, (px-offsetx, py-offsety))
+        self.image = self.images[self.name][self.direction*4+self.frame//self.animcycle%4]
 
 if __name__ == "__main__":
     main()
